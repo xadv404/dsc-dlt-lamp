@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "dsc-dlt-lamp"
+version = "1.0.0"
+description = "Supprime vos messages Discord avec un dashboard en temps réel"
+requires-python = ">=3.10"
+dependencies = [
+    "requests>=2.31.0",
+    "rich>=13.7.0",
+]
+
+[project.scripts]
+discord-deleter = "main:main"
+
+[tool.setuptools]
+py-modules = ["main", "discord_deleter"]
