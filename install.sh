@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-set -e
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
 
 echo "Installation de dsc-dlt-lamp..."
-python3 -m pip install --upgrade pip
-python3 -m pip install .
-
-echo ""
-echo "Terminé ! Lance avec : discord-deleter"
+exec "$SCRIPT_DIR/fix-venv.sh"
