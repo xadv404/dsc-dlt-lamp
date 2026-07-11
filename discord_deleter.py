@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Any, Callable
 
 import requests
@@ -12,10 +12,18 @@ DISCORD_API = "https://discord.com/api/v10"
 
 
 @dataclass
+class MessageTarget:
+    channel_id: str
+    message_id: str
+    content: str
+
+
+@dataclass
 class DeleteStats:
     deleted: int = 0
-    skipped: int = 0
     failed: int = 0
+    total: int = 0
+    last_deleted: list[MessageTarget] = field(default_factory=list)
 
 
 class DiscordClient:
@@ -66,7 +74,7 @@ class DiscordClient:
             response = self._request("GET", f"/channels/{channel_id}/messages", params=params)
             if response.status_code == 403:
                 raise PermissionError(
-                    "Accès refusé à ce salon. Vérifiez l'ID et vos permissions."
+                    f"Accès refusé au salon {channel_id}. Vérifiez l'ID et vos permissions."
                 )
             response.raise_for_status()
 
@@ -89,37 +97,35 @@ class DiscordClient:
         return False
 
 
-def delete_channel_messages(
+def collect_own_messages(
     client: DiscordClient,
-    channel_id: str,
-    *,
-    dry_run: bool = False,
-    delay: float = 0.35,
-    on_progress: Callable[..., None] | None = None,
-) -> DeleteStats:
-    stats = DeleteStats()
+    channel_ids: list[str],
+    on_scan: Callable[[str, int], None] | None = None,
+) -> list[MessageTarget]:
     user_id = client.user_id
+    targets: list[MessageTarget] = []
 
-    for message in client.iter_messages(channel_id):
-        author_id = message.get("author", {}).get("id")
-        if author_id != user_id:
-            stats.skipped += 1
-            continue
+    for channel_id in channel_ids:
+        if on_scan:
+            on_scan(channel_id, len(targets))
 
-        if dry_run:
-            stats.deleted += 1
-            if on_progress:
-                on_progress(stats, message)
-            continue
+        for message in client.iter_messages(channel_id):
+            if message.get("author", {}).get("id") != user_id:
+                continue
 
-        if client.delete_message(channel_id, message["id"]):
-            stats.deleted += 1
-        else:
-            stats.failed += 1
+            content = message.get("content") or "[sans texte]"
+            if message.get("attachments"):
+                content = f"{content} [fichier]" if content != "[sans texte]" else "[fichier]"
 
-        if on_progress:
-            on_progress(stats, message)
+            targets.append(
+                MessageTarget(
+                    channel_id=channel_id,
+                    message_id=message["id"],
+                    content=content[:80],
+                )
+            )
 
-        time.sleep(delay)
+            if on_scan:
+                on_scan(channel_id, len(targets))
 
-    return stats
+    return targets
