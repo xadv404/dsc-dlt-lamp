@@ -28,11 +28,6 @@ def parse_args() -> argparse.Namespace:
         help="Token utilisateur Discord (ou variable DISCORD_TOKEN)",
     )
     parser.add_argument(
-        "--all",
-        action="store_true",
-        help="Supprimer tous les messages supprimables (nécessite la permission Gérer les messages sur un serveur)",
-    )
-    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Simuler sans supprimer réellement",
@@ -80,8 +75,7 @@ def main() -> int:
     if args.dry_run:
         print("Mode simulation activé — aucun message ne sera supprimé.")
 
-    mode = "tous les messages supprimables" if args.all else "vos messages uniquement"
-    print(f"Mode: {mode}\n")
+    print("Mode: suppression de vos messages uniquement\n")
 
     def on_progress(stats, message):
         author = message.get("author", {}).get("username", "?")
@@ -93,7 +87,6 @@ def main() -> int:
         stats = delete_channel_messages(
             client,
             args.channel_id,
-            own_only=not args.all,
             dry_run=args.dry_run,
             delay=args.delay,
             on_progress=on_progress,

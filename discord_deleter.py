@@ -88,54 +88,21 @@ class DiscordClient:
         response.raise_for_status()
         return False
 
-    def bulk_delete(self, channel_id: str, message_ids: list[str]) -> None:
-        if len(message_ids) < 2:
-            return
-        payload = {"messages": message_ids}
-        response = self._request(
-            "POST", f"/channels/{channel_id}/messages/bulk-delete", json=payload
-        )
-        if response.status_code == 429:
-            return
-        response.raise_for_status()
-
 
 def delete_channel_messages(
     client: DiscordClient,
     channel_id: str,
     *,
-    own_only: bool = True,
     dry_run: bool = False,
     delay: float = 0.35,
     on_progress: Callable[..., None] | None = None,
 ) -> DeleteStats:
     stats = DeleteStats()
     user_id = client.user_id
-    bulk_buffer: list[str] = []
-
-    def flush_bulk() -> None:
-        nonlocal bulk_buffer
-        if dry_run or len(bulk_buffer) < 2:
-            bulk_buffer = []
-            return
-        try:
-            client.bulk_delete(channel_id, bulk_buffer)
-            stats.deleted += len(bulk_buffer)
-        except requests.HTTPError:
-            for message_id in bulk_buffer:
-                if client.delete_message(channel_id, message_id):
-                    stats.deleted += 1
-                else:
-                    stats.failed += 1
-                time.sleep(delay)
-        bulk_buffer = []
 
     for message in client.iter_messages(channel_id):
-        message_id = message["id"]
         author_id = message.get("author", {}).get("id")
-        is_own = author_id == user_id
-
-        if own_only and not is_own:
+        if author_id != user_id:
             stats.skipped += 1
             continue
 
@@ -145,14 +112,7 @@ def delete_channel_messages(
                 on_progress(stats, message)
             continue
 
-        if not own_only and not is_own:
-            bulk_buffer.append(message_id)
-            if len(bulk_buffer) >= 100:
-                flush_bulk()
-                time.sleep(1.0)
-            continue
-
-        if client.delete_message(channel_id, message_id):
+        if client.delete_message(channel_id, message["id"]):
             stats.deleted += 1
         else:
             stats.failed += 1
@@ -162,5 +122,4 @@ def delete_channel_messages(
 
         time.sleep(delay)
 
-    flush_bulk()
     return stats
