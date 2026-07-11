@@ -6,8 +6,9 @@ from __future__ import annotations
 import time
 from datetime import timedelta
 
-from rich.console import Console
+from rich.console import Console, Group
 from rich.live import Live
+from rich.table import Table
 from rich.text import Text
 
 from discord_deleter import DiscordClient, DeleteStats, collect_own_messages
@@ -33,45 +34,77 @@ def parse_channel_ids(raw: str) -> list[str]:
     return ids
 
 
+def progress_bar(ratio: float, width: int = 28) -> str:
+    ratio = max(0.0, min(ratio, 1.0))
+    filled = int(width * ratio)
+    return f"[cyan]{'█' * filled}[/][dim]{'░' * (width - filled)}[/]"
+
+
 def build_dashboard(
     stats: DeleteStats,
     elapsed: float,
     *,
     status: str = "Suppression en cours...",
     scanning_channel: str | None = None,
-) -> Text:
+) -> Group:
     remaining = max(stats.total - stats.deleted - stats.failed, 0)
+    done = stats.deleted + stats.failed
 
     if stats.deleted > 0:
-        avg_per_msg = elapsed / stats.deleted
-        eta_seconds = avg_per_msg * remaining
+        eta_seconds = (elapsed / stats.deleted) * remaining
     else:
         eta_seconds = float("inf")
 
-    lines = [
-        "[bold red]deleted[/]",
-        "",
-        f"[cyan]time[/] : [white]{format_duration(elapsed)}[/]",
-        f"[cyan]supprimé[/] : [green]{stats.deleted}[/]",
-        f"[cyan]restants[/] : [yellow]{remaining}[/]",
-        f"[cyan]eta[/] : [white]{format_duration(eta_seconds)}[/]",
-        "",
-        "[magenta]last deleted :[/]",
-    ]
+    ratio = done / stats.total if stats.total else 0.0
+    percent = ratio * 100
+
+    stats_table = Table(show_header=False, box=None, padding=(0, 2), expand=False)
+    stats_table.add_column(style="dim", width=18, no_wrap=True)
+    stats_table.add_column(style="bold", justify="right", min_width=10)
+
+    stats_table.add_row("Temps écoulé", f"[white]{format_duration(elapsed)}[/]")
+    stats_table.add_row("Supprimés", f"[green]{stats.deleted}[/]")
+    stats_table.add_row("Restants", f"[yellow]{remaining}[/]")
+    stats_table.add_row("Temps restant", f"[white]{format_duration(eta_seconds)}[/]")
+
+    if stats.failed:
+        stats_table.add_row("Échecs", f"[red]{stats.failed}[/]")
+
+    progress = Text.from_markup(
+        f"[dim]Progression[/]  {progress_bar(ratio)}  [bold cyan]{percent:5.1f}%[/]"
+    )
+
+    history = Table(show_header=False, box=None, padding=(0, 1), expand=False)
+    history.add_column(style="dim", width=2, no_wrap=True)
+    history.add_column()
 
     if stats.last_deleted:
         for target in stats.last_deleted:
-            lines.append(f"[dim]{target.content}[/] [dim](ID : {target.message_id})[/]")
+            history.add_row(
+                "›",
+                f"[white]{target.content}[/] [dim](ID : {target.message_id})[/]",
+            )
     else:
-        lines.append("[dim]—[/]")
+        history.add_row("", "[dim]Aucun message supprimé pour l'instant[/]")
 
     if scanning_channel:
-        lines.extend(["", f"[yellow]scan du salon {scanning_channel}...[/]"])
-    elif status != "Suppression en cours...":
-        color = "green" if remaining == 0 else "yellow"
-        lines.extend(["", f"[{color}]{status}[/]"])
+        status_text = Text(f"Scan du salon {scanning_channel}...", style="dim yellow")
+    else:
+        status_color = "green" if remaining == 0 and stats.total > 0 else "dim"
+        status_text = Text(status, style=status_color)
 
-    return Text.from_markup("\n".join(lines))
+    return Group(
+        Text("Statistiques", style="bold white"),
+        Text(""),
+        stats_table,
+        Text(""),
+        progress,
+        Text(""),
+        Text("Derniers supprimés", style="bold magenta"),
+        history,
+        Text(""),
+        status_text,
+    )
 
 
 def prompt_channel_ids() -> list[str]:
