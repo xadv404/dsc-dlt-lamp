@@ -6,11 +6,8 @@ from __future__ import annotations
 import time
 from datetime import timedelta
 
-from rich import box
-from rich.console import Console, Group
+from rich.console import Console
 from rich.live import Live
-from rich.panel import Panel
-from rich.table import Table
 from rich.text import Text
 
 from discord_deleter import DiscordClient, DeleteStats, collect_own_messages
@@ -42,7 +39,7 @@ def build_dashboard(
     *,
     status: str = "Suppression en cours...",
     scanning_channel: str | None = None,
-) -> Panel:
+) -> Text:
     remaining = max(stats.total - stats.deleted - stats.failed, 0)
 
     if stats.deleted > 0:
@@ -51,45 +48,30 @@ def build_dashboard(
     else:
         eta_seconds = float("inf")
 
-    table = Table.grid(padding=(0, 2))
-    table.add_column(style="bold cyan", justify="right", width=12)
-    table.add_column(style="bold white")
-
-    table.add_row("time", format_duration(elapsed))
-    table.add_row("supprimé", str(stats.deleted))
-    table.add_row("restants", str(remaining))
-    table.add_row("eta", format_duration(eta_seconds))
-
-    if scanning_channel:
-        status_line = Text(f"Scan du salon {scanning_channel}...", style="bold yellow")
-    else:
-        status_line = Text(status, style="bold green" if remaining == 0 else "bold yellow")
-
-    last_deleted = Table.grid(padding=(0, 1))
-    last_deleted.add_column(style="dim white")
+    lines = [
+        "[bold red]deleted[/]",
+        "",
+        f"[cyan]time[/] : [white]{format_duration(elapsed)}[/]",
+        f"[cyan]supprimé[/] : [green]{stats.deleted}[/]",
+        f"[cyan]restants[/] : [yellow]{remaining}[/]",
+        f"[cyan]eta[/] : [white]{format_duration(eta_seconds)}[/]",
+        "",
+        "[magenta]last deleted :[/]",
+    ]
 
     if stats.last_deleted:
         for target in stats.last_deleted:
-            last_deleted.add_row(f"{target.content} (ID : {target.message_id})")
+            lines.append(f"[dim]{target.content}[/] [dim](ID : {target.message_id})[/]")
     else:
-        last_deleted.add_row("—")
+        lines.append("[dim]—[/]")
 
-    body = Group(
-        status_line,
-        Text(""),
-        table,
-        Text(""),
-        Text("last deleted :", style="bold magenta"),
-        last_deleted,
-    )
+    if scanning_channel:
+        lines.extend(["", f"[yellow]scan du salon {scanning_channel}...[/]"])
+    elif status != "Suppression en cours...":
+        color = "green" if remaining == 0 else "yellow"
+        lines.extend(["", f"[{color}]{status}[/]"])
 
-    return Panel(
-        body,
-        title=Text(" DELETED ", style="bold white on red"),
-        border_style="bright_red",
-        box=box.DOUBLE,
-        padding=(1, 2),
-    )
+    return Text.from_markup("\n".join(lines))
 
 
 def prompt_channel_ids() -> list[str]:
